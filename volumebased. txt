@@ -1,0 +1,150 @@
+//@version=5
+
+indicator("1 Stoch + RSI + Error Bands + RVOL", overlay=true, max_lines_count=500, max_labels_count=500)
+
+
+
+// ================= Inputs =================
+
+// Stochastic
+
+kLength     = input.int(14, "Stoch %K Length")
+
+dLength     = input.int(3, "Stoch %D Smoothing")
+
+stochOB     = input.int(80, "Stoch Overbought")
+
+stochOS     = input.int(20, "Stoch Oversold")
+
+showStoch   = input.bool(true, "Show Stochastic?")
+
+
+
+// RSI
+
+rsiLength   = input.int(14, "RSI Length")
+
+rsiOB       = input.int(70, "RSI Overbought")
+
+rsiOS       = input.int(30, "RSI Oversold")
+
+showRSI     = input.bool(true, "Show RSI?")
+
+
+
+// Error Bands
+
+ebLength    = input.int(20, "Error Band Length")
+
+ebMult      = input.float(2.0, "Error Multiplier")
+
+showEB      = input.bool(true, "Show Error Bands?")
+
+
+
+// Relative Volume (RVOL)
+
+rvolLength  = input.int(20, "RVOL Length")
+
+rvolThresh  = input.float(1.5, "RVOL Threshold")
+
+showRVOL    = input.bool(true, "Show RVOL?")
+
+
+
+// ================= Calculations =================
+
+// --- Stochastic ---
+
+k = ta.sma(ta.stoch(close, high, low, kLength), dLength)
+
+d = ta.sma(k, dLength)
+
+
+
+// --- RSI ---
+
+rsi = ta.rsi(close, rsiLength)
+
+
+
+// --- Error Bands ---
+
+basis = ta.sma(close, ebLength)
+
+err   = ta.stdev(close, ebLength) / math.sqrt(ebLength) // standard error
+
+upper = basis + ebMult * err
+
+lower = basis - ebMult * err
+
+
+
+// --- RVOL ---
+
+avgVol = ta.sma(volume, rvolLength)
+
+rvol   = avgVol > 0 ? volume / avgVol : na
+
+
+
+// ================= Plotting =================
+
+// Error Bands
+
+plot(showEB ? basis : na, "Error Basis", color=color.orange)
+
+plot(showEB ? upper : na, "Error Upper", color=color.green)
+
+plot(showEB ? lower : na, "Error Lower", color=color.red)
+
+
+
+// RSI
+
+rsiCol = rsi > rsiOB ? color.red : rsi < rsiOS ? color.green : color.gray
+
+plot(showRSI ? rsi : na, "RSI", color=rsiCol, display=display.none)
+
+
+
+// Stochastic
+
+plot(showStoch ? k : na, "Stoch %K", color=color.blue, display=display.none)
+
+plot(showStoch ? d : na, "Stoch %D", color=color.orange, display=display.none)
+
+
+
+// RVOL
+
+plot(showRVOL ? rvol : na, "RVOL", color=color.blue, display=display.none)
+
+
+
+// ================= Levels (must be global) =================
+
+hline(rsiOB,   "RSI OB",   color=color.red,   linestyle=hline.style_dotted)
+
+hline(rsiOS,   "RSI OS",   color=color.green, linestyle=hline.style_dotted)
+
+hline(stochOB, "Stoch OB", color=color.red,   linestyle=hline.style_dotted)
+
+hline(stochOS, "Stoch OS", color=color.green, linestyle=hline.style_dotted)
+
+hline(rvolThresh, "RVOL Threshold", color=color.purple, linestyle=hline.style_dashed)
+
+
+
+// ================= Conditions =================
+
+buyCond  = showStoch and k < stochOS and showRSI and rsi < rsiOS and showRVOL and rvol > rvolThresh and showEB and close < lower
+
+sellCond = showStoch and k > stochOB and showRSI and rsi > rsiOB and showRVOL and rvol > rvolThresh and showEB and close > upper
+
+
+
+plotshape(buyCond,  title="Buy Signal",  style=shape.triangleup,   color=color.green, size=size.small, location=location.belowbar)
+
+plotshape(sellCond, title="Sell Signal", style=shape.triangledown, color=color.red,   size=size.small, location=location.abovebar)
+
