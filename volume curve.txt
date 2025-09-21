@@ -1,0 +1,101 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+//@version=5
+indicator("Session Delta + Counters + Levels + VWAP + Imb + CumImb%", overlay=true, max_labels_count=500)
+
+// ==== Inputs ====
+deltaLength = input.int(20, "Smoothing Length")
+obLevel     = input.int(1000, "Overbought Level")
+osLevel     = input.int(-1000, "Oversold Level")
+
+// ==== Session Reset Logic ====
+newDay = ta.change(time("D"))
+
+// ==== Candle Delta ====
+candleDelta = close > open ? volume : close < open ? -volume : 0
+
+// ==== Session cumulative delta (reset daily) ====
+var float sessionDelta = 0.0
+sessionDelta := newDay ? candleDelta : sessionDelta + candleDelta
+
+// ==== Overbought/Oversold Signals ====
+obCond = sessionDelta > obLevel
+osCond = sessionDelta < osLevel
+plotshape(obCond, title="Delta Overbought", style=shape.triangledown, color=color.red, size=size.small, location=location.abovebar)
+plotshape(osCond, title="Delta Oversold", style=shape.triangleup, color=color.green, size=size.small, location=location.belowbar)
+
+// ==== Persistent Green/Red Candle Counters ====
+var int greenCount = 0
+var int redCount   = 0
+greenCount += close > open ? 1 : 0
+redCount   += close < open ? 1 : 0
+greenCount := newDay ? 0 : greenCount
+redCount   := newDay ? 0 : redCount
+
+// ==== Trend ====
+trend = greenCount > redCount ? "UP" : redCount > greenCount ? "DOWN" : "NEUTRAL"
+
+// ==== Buy/Sell Volume (for imbalance) ====
+var float buyVol  = 0.0
+var float sellVol = 0.0
+buyVol  := newDay ? (close > open ? volume : 0) : buyVol + (close > open ? volume : 0)
+sellVol := newDay ? (close < open ? volume : 0) : sellVol + (close < open ? volume : 0)
+imbalance = (buyVol + sellVol > 0) ? (buyVol - sellVol) / (buyVol + sellVol) * 100 : 0
+
+// ==== Normalized Dynamic Buy/Sell Probabilities ====
+greenRatio = greenCount + redCount > 0 ? greenCount / (greenCount + redCount) : 0.5
+redRatio   = greenCount + redCount > 0 ? redCount / (greenCount + redCount) : 0.5
+
+buyScoreRaw  = greenRatio + math.max(sessionDelta, 0) / (math.abs(sessionDelta) + 1) + math.max(imbalance, 0) / 100
+sellScoreRaw = redRatio   + math.max(-sessionDelta, 0) / (math.abs(sessionDelta) + 1) + math.max(-imbalance, 0) / 100
+
+totalScore = buyScoreRaw + sellScoreRaw
+buyProb  = totalScore > 0 ? (buyScoreRaw / totalScore) * 100 : 50
+sellProb = totalScore > 0 ? (sellScoreRaw / totalScore) * 100 : 50
+
+// ==== Cumulative Imbalance Percent (reset daily) ====
+var float cumImb = 0.0
+cumImb := newDay ? imbalance : cumImb + imbalance
+
+// ==== Compact Combined Table (Bottom Left) ====
+var table infoTable = table.new(position.bottom_left, 1, 8, border_width=1)
+table.cell(infoTable, 0, 0, "Grn:" + str.tostring(greenCount), text_color=color.lime, text_size=size.small, bgcolor=color.black)
+table.cell(infoTable, 0, 1, "Red:" + str.tostring(redCount), text_color=color.red, text_size=size.small, bgcolor=color.black)
+table.cell(infoTable, 0, 2, "Trnd:" + trend, text_color=color.white, text_size=size.small, bgcolor=(trend=="UP"?color.green:trend=="DOWN"?color.red:color.gray))
+table.cell(infoTable, 0, 3, "Imb%:" + str.tostring(imbalance, "#.##"), text_color=color.white, text_size=size.small, bgcolor=color.black)
+table.cell(infoTable, 0, 4, "Buy%:" + str.tostring(buyProb, "#.##"), text_color=color.lime, text_size=size.small, bgcolor=color.black)
+table.cell(infoTable, 0, 5, "Sell%:" + str.tostring(sellProb, "#.##"), text_color=color.red, text_size=size.small, bgcolor=color.black)
+table.cell(infoTable, 0, 6, "CumImb%:" + str.tostring(cumImb, "#.##"), text_color=color.purple, text_size=size.small, bgcolor=color.black)
+table.cell(infoTable, 0, 7, "Δ:" + str.tostring(sessionDelta, format.mintick), text_color=color.white, text_size=size.small, bgcolor=color.black)
+
+// ==== Previous Day Levels ====
+prevHigh  = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
+prevLow   = request.security(syminfo.tickerid, "D", low[1], lookahead=barmerge.lookahead_on)
+prevClose = request.security(syminfo.tickerid, "D", close[1], lookahead=barmerge.lookahead_on)
+prevMid   = (prevHigh + prevLow) / 2.0
+plot(prevHigh,  "Prev High",  color=color.new(color.red,   0), linewidth=1)
+plot(prevLow,   "Prev Low",   color=color.new(color.green, 0), linewidth=1)
+plot(prevMid,   "Prev Mid",   color=color.new(color.blue,  0), linewidth=1)
+plot(prevClose, "Prev Close", color=color.new(color.yellow,0), linewidth=1)
+
+// ==== Current Session High/Low/Mid ====
+var float curHigh = na
+var float curLow  = na
+curHigh := newDay ? high : math.max(nz(curHigh, high), high)
+curLow  := newDay ? low  : math.min(nz(curLow, low), low)
+curMid  = (curHigh + curLow) / 2.0
+plot(curHigh, "Session High", color=color.fuchsia, linewidth=2)
+plot(curLow,  "Session Low",  color=color.teal, linewidth=2)
+plot(curMid,  "Session Mid",  color=color.aqua, linewidth=2)
+
+// ==== Session VWAP ====
+var float vwapSumPV = na
+var float vwapSumV  = na
+vwapSumPV := newDay ? (hlc3 * volume) : nz(vwapSumPV) + hlc3 * volume
+vwapSumV  := newDay ? volume : nz(vwapSumV) + volume
+sessionVWAP = vwapSumV > 0 ? vwapSumPV / vwapSumV : na
+plot(sessionVWAP, "Session VWAP", color=color.orange, linewidth=2)
+
+// ==== Plot CumImb% Curve ====
+plot(cumImb, "CumImb%", color=color.purple, linewidth=2)
+
