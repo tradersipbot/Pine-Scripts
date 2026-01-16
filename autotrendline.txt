@@ -1,0 +1,62 @@
+//@version=5
+indicator("Auto Trendline Channel (TIME SAFE)", overlay=true, max_lines_count=50)
+
+// ================== INPUTS ==================
+len      = input.int(20, "Pivot Length", minval=2)
+showMid  = input.bool(true, "Show Midline")
+
+// ================== PIVOTS ==================
+ph = ta.pivothigh(high, len, len)
+pl = ta.pivotlow(low, len, len)
+
+var float lastHigh = na
+var float prevHigh = na
+var int   lastHighBar = na
+var int   prevHighBar = na
+
+var float lastLow = na
+var float prevLow = na
+var int   lastLowBar = na
+var int   prevLowBar = na
+
+if not na(ph)
+    prevHigh := lastHigh
+    prevHighBar := lastHighBar
+    lastHigh := ph
+    lastHighBar := bar_index - len
+
+if not na(pl)
+    prevLow := lastLow
+    prevLowBar := lastLowBar
+    lastLow := pl
+    lastLowBar := bar_index - len
+
+                                // ================== CHANNEL LOGIC (TIME BASED – NO RUNTIME ERROR) ==================
+var line upperLine = na
+var line lowerLine = na
+var line midLine   = na
+
+float slope  = na
+float offset = na
+
+if not na(prevHigh) and not na(lastHigh) and not na(prevLow) and not na(lastLow) and (lastHighBar != prevHighBar)
+    slope  := (lastHigh - prevHigh) / (lastHighBar - prevHighBar)
+    offset := lastLow - (prevHigh + slope * (lastLowBar - prevHighBar))
+
+    line.delete(upperLine)
+    line.delete(lowerLine)
+    line.delete(midLine)
+
+    int t1 = time[bar_index - prevHighBar]
+    int t2 = time
+
+    upperLine := line.new(t1, prevHigh, t2, prevHigh + slope * (bar_index - prevHighBar), xloc=xloc.bar_time, color=color.red, width=2)
+    lowerLine := line.new(t1, prevHigh + offset, t2, prevHigh + slope * (bar_index - prevHighBar) + offset, xloc=xloc.bar_time, color=color.green, width=2)
+
+    if showMid
+        midLine := line.new(t1, prevHigh + offset / 2, t2, prevHigh + slope * (bar_index - prevHighBar) + offset / 2, xloc=xloc.bar_time, color=color.gray, style=line.style_dashed)
+
+                                                                                // ================== VISUAL HELP ==================
+plotshape(not na(ph), style=shape.triangledown, location=location.abovebar, color=color.red, size=size.tiny)
+plotshape(not na(pl), style=shape.triangleup, location=location.belowbar, color=color.green, size=size.tiny)
+
